@@ -84,8 +84,9 @@ export default function AddItemScreen() {
       Alert.alert('Success', 'Item added to your wardrobe!', [
         { text: 'OK', onPress: () => router.push('/(tabs)') },
       ]);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to add item. Please try again.');
+    } catch (error: any) {
+      console.error('Add item error:', error);
+      Alert.alert('Error', error?.message || 'Failed to add item. Please try again.');
     }
   };
 

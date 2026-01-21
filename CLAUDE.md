@@ -29,7 +29,18 @@ A wardrobe management app that helps users organize their clothes, track what th
 - [ ] Virtual try-on (see how others' outfits look on you)
 
 ## Current Status
-Setting up Phase 1 MVP - basic wardrobe management with auth and image upload.
+Phase 1 MVP in progress - basic wardrobe management with auth and image upload working.
+
+## Known Issues & TODOs
+
+### Auth (to be addressed before production)
+- [ ] Email confirmation disabled for development - need to re-enable and set up deep linking for email verification redirect
+- [ ] Password reset/forgot password flow not implemented
+- [ ] Email change flow not implemented
+
+### Future Auth Improvements
+- [ ] Social login (Google, Apple)
+- [ ] Proper deep linking setup for Expo (email confirmation, password reset links)
 
 ## Architecture Notes
 - Supabase Storage for clothing images

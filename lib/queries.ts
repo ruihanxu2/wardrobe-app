@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from './supabase';
 import { ClothingItem, ClothingItemInsert, ClothingItemUpdate } from '@/types';
 import { useAuth } from './auth';
-import * as FileSystem from 'expo-file-system';
+import { File } from 'expo-file-system/next';
 import { decode } from 'base64-arraybuffer';
 
 export function useClothingItems() {
@@ -52,9 +52,8 @@ export function useAddClothingItem() {
 
       // Upload image to Supabase Storage
       const fileName = `${user.id}/${Date.now()}.jpg`;
-      const base64 = await FileSystem.readAsStringAsync(imageUri, {
-        encoding: 'base64',
-      });
+      const file = new File(imageUri);
+      const base64 = await file.base64();
 
       const { error: uploadError } = await supabase.storage
         .from('clothing-images')
