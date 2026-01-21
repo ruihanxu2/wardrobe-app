@@ -16,6 +16,13 @@ A wardrobe management app that helps users organize their clothes, track what th
 - [ ] View wardrobe gallery
 - [ ] Basic CRUD for clothing items
 
+### Phase 2A: Virtual Try-On
+- [ ] Research and select virtual try-on API (FASHN.ai, Google Vertex AI, or AILab Tools)
+- [ ] Set up Supabase Edge Function for API calls
+- [ ] Add selfie upload to Outfit tab
+- [ ] Generate try-on images from selected outfit
+- [ ] Save/share generated outfits
+
 ### Phase 2: Enhanced Features
 - [ ] Scan coupons
 - [ ] VLM integration for auto-tagging clothes
@@ -29,7 +36,7 @@ A wardrobe management app that helps users organize their clothes, track what th
 - [ ] Virtual try-on (see how others' outfits look on you)
 
 ## Current Status
-Phase 1 MVP in progress - basic wardrobe management with auth and image upload working.
+Phase 1 MVP in progress - basic wardrobe management with auth and image upload working. Outfit builder (manual outfit creation) is complete. Virtual Try-On planned for Phase 2A.
 
 ## Known Issues & TODOs
 
@@ -46,3 +53,8 @@ Phase 1 MVP in progress - basic wardrobe management with auth and image upload w
 - Supabase Storage for clothing images
 - Supabase Postgres for clothing metadata
 - Row Level Security (RLS) for user data isolation
+
+## Virtual Try-On Architecture (Future)
+- Supabase Edge Function as API proxy
+- Virtual try-on API options: FASHN.ai (recommended), Google Vertex AI, AILab Tools
+- Flow: User selfie + clothing images → Edge Function → Try-on API → Generated image
