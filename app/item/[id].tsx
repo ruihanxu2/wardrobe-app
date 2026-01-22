@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useClothingItem, useUpdateClothingItem, useDeleteClothingItem } from '@/lib/queries';
-import { CATEGORIES, COLORS } from '@/constants/categories';
+import { CATEGORIES, COLORS, OCCASIONS } from '@/constants/categories';
 
 export default function ItemDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -25,6 +25,7 @@ export default function ItemDetailScreen() {
   const [editName, setEditName] = useState('');
   const [editCategory, setEditCategory] = useState('');
   const [editColor, setEditColor] = useState('');
+  const [editOccasion, setEditOccasion] = useState<string[]>([]);
   const [editBrand, setEditBrand] = useState('');
   const [editNotes, setEditNotes] = useState('');
 
@@ -33,6 +34,7 @@ export default function ItemDetailScreen() {
     setEditName(item.name);
     setEditCategory(item.category);
     setEditColor(item.color || '');
+    setEditOccasion(item.occasion || []);
     setEditBrand(item.brand || '');
     setEditNotes(item.notes || '');
     setIsEditing(true);
@@ -58,6 +60,7 @@ export default function ItemDetailScreen() {
         name: editName.trim(),
         category: editCategory,
         color: editColor || undefined,
+        occasion: editOccasion.length > 0 ? editOccasion : undefined,
         brand: editBrand.trim() || undefined,
         notes: editNotes.trim() || undefined,
       });
@@ -165,6 +168,25 @@ export default function ItemDetailScreen() {
               ))}
             </View>
 
+            <Text style={styles.label}>Occasion</Text>
+            <View style={styles.chipContainer}>
+              {OCCASIONS.map((occ) => (
+                <TouchableOpacity
+                  key={occ}
+                  style={[styles.chip, editOccasion.includes(occ) && styles.chipSelected]}
+                  onPress={() => {
+                    setEditOccasion((prev) =>
+                      prev.includes(occ) ? prev.filter((o) => o !== occ) : [...prev, occ]
+                    );
+                  }}
+                >
+                  <Text style={[styles.chipText, editOccasion.includes(occ) && styles.chipTextSelected]}>
+                    {occ}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
             <Text style={styles.label}>Brand</Text>
             <TextInput
               style={styles.input}
@@ -213,6 +235,13 @@ export default function ItemDetailScreen() {
               <View style={styles.detailRow}>
                 <Text style={styles.detailLabel}>Color</Text>
                 <Text style={styles.detailValue}>{item.color}</Text>
+              </View>
+            )}
+
+            {item.occasion && item.occasion.length > 0 && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Occasion</Text>
+                <Text style={styles.detailValue}>{item.occasion.join(', ')}</Text>
               </View>
             )}
 

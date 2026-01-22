@@ -9,6 +9,7 @@ create table if not exists clothing_items (
   name text not null,
   category text not null,
   color text,
+  occasion text[],
   brand text,
   notes text,
   created_at timestamp with time zone default now()
@@ -33,6 +34,9 @@ create policy "Users can delete own items" on clothing_items
 -- 4. Create index for faster queries
 create index if not exists clothing_items_user_id_idx on clothing_items(user_id);
 create index if not exists clothing_items_created_at_idx on clothing_items(created_at desc);
+
+-- 5. Migration: Add occasion column (run this if table already exists)
+-- ALTER TABLE clothing_items ADD COLUMN IF NOT EXISTS occasion text[];
 
 -- Storage Setup Instructions:
 -- 1. Go to Storage in your Supabase dashboard

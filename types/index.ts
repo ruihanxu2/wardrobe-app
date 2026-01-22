@@ -5,6 +5,7 @@ export interface ClothingItem {
   name: string;
   category: string;
   color: string;
+  occasion: string[] | null;
   brand: string | null;
   notes: string | null;
   created_at: string;

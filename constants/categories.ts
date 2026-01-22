@@ -5,8 +5,16 @@ export const CATEGORIES = [
   'Outerwear',
   'Shoes',
   'Accessories',
-  'Activewear',
-  'Sleepwear',
+  'Innerwear',
+  'Other',
+] as const;
+
+export const OCCASIONS = [
+  'Casual',
+  'Work',
+  'Formal',
+  'Athletic',
+  'Loungewear',
   'Other',
 ] as const;
 
@@ -29,3 +37,4 @@ export const COLORS = [
 
 export type Category = (typeof CATEGORIES)[number];
 export type Color = (typeof COLORS)[number];
+export type Occasion = (typeof OCCASIONS)[number];

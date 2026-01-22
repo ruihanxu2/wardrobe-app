@@ -13,7 +13,7 @@ import {
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useAddClothingItem } from '@/lib/queries';
-import { CATEGORIES, COLORS } from '@/constants/categories';
+import { CATEGORIES, COLORS, OCCASIONS } from '@/constants/categories';
 
 export default function AddItemScreen() {
   const router = useRouter();
@@ -23,6 +23,7 @@ export default function AddItemScreen() {
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
   const [color, setColor] = useState('');
+  const [occasion, setOccasion] = useState<string[]>([]);
   const [brand, setBrand] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -77,6 +78,7 @@ export default function AddItemScreen() {
         name: name.trim(),
         category,
         color,
+        occasion: occasion.length > 0 ? occasion : null,
         brand: brand.trim() || null,
         notes: notes.trim() || null,
       });
@@ -155,6 +157,25 @@ export default function AddItemScreen() {
             >
               <Text style={[styles.chipText, color === col && styles.chipTextSelected]}>
                 {col}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={styles.label}>Occasion (select all that apply)</Text>
+        <View style={styles.chipContainer}>
+          {OCCASIONS.map((occ) => (
+            <TouchableOpacity
+              key={occ}
+              style={[styles.chip, occasion.includes(occ) && styles.chipSelected]}
+              onPress={() => {
+                setOccasion((prev) =>
+                  prev.includes(occ) ? prev.filter((o) => o !== occ) : [...prev, occ]
+                );
+              }}
+            >
+              <Text style={[styles.chipText, occasion.includes(occ) && styles.chipTextSelected]}>
+                {occ}
               </Text>
             </TouchableOpacity>
           ))}
