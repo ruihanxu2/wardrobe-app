@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -12,14 +12,22 @@ import {
   Dimensions,
   FlatList,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+} from 'react-native-reanimated';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useAddClothingItem } from '@/lib/queries';
 import { CATEGORIES, COLORS, OCCASIONS } from '@/constants/categories';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const GALLERY_ITEM_SIZE = SCREEN_WIDTH / 4;
+const PREVIEW_SIZE = SCREEN_WIDTH; // Square preview area
 
 // Color values for visual color picker
 const COLOR_VALUES: Record<string, string> = {
@@ -67,6 +75,24 @@ export default function AddItemScreen() {
   const [galleryAssets, setGalleryAssets] = useState<GalleryAsset[]>([]);
   const [galleryPermission, setGalleryPermission] = useState<boolean | null>(null);
   const [loadingGallery, setLoadingGallery] = useState(true);
+
+  // Zoom state
+  const scale = useSharedValue(1);
+  const savedScale = useSharedValue(1);
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const savedTranslateX = useSharedValue(0);
+  const savedTranslateY = useSharedValue(0);
+
+  // Reset zoom when image changes
+  useEffect(() => {
+    scale.value = 1;
+    savedScale.value = 1;
+    translateX.value = 0;
+    translateY.value = 0;
+    savedTranslateX.value = 0;
+    savedTranslateY.value = 0;
+  }, [imageUri]);
 
   // Load gallery on mount
   useEffect(() => {
@@ -188,6 +214,56 @@ export default function AddItemScreen() {
     }
   };
 
+  // Pinch gesture for zoom
+  const pinchGesture = Gesture.Pinch()
+    .onUpdate((event: { scale: number }) => {
+      scale.value = Math.max(0.5, Math.min(savedScale.value * event.scale, 3));
+    })
+    .onEnd(() => {
+      savedScale.value = scale.value;
+      // Snap back if zoomed out too much
+      if (scale.value < 1) {
+        scale.value = withSpring(scale.value);
+      }
+    });
+
+  // Pan gesture for moving
+  const panGesture = Gesture.Pan()
+    .onUpdate((event: { translationX: number; translationY: number }) => {
+      translateX.value = savedTranslateX.value + event.translationX;
+      translateY.value = savedTranslateY.value + event.translationY;
+    })
+    .onEnd(() => {
+      savedTranslateX.value = translateX.value;
+      savedTranslateY.value = translateY.value;
+    });
+
+  // Double tap to reset
+  const doubleTapGesture = Gesture.Tap()
+    .numberOfTaps(2)
+    .onEnd(() => {
+      scale.value = withSpring(1);
+      savedScale.value = 1;
+      translateX.value = withSpring(0);
+      translateY.value = withSpring(0);
+      savedTranslateX.value = 0;
+      savedTranslateY.value = 0;
+    });
+
+  const composedGesture = Gesture.Simultaneous(
+    pinchGesture,
+    panGesture,
+    doubleTapGesture
+  );
+
+  const animatedImageStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+      { scale: scale.value },
+    ],
+  }));
+
   // Progress Indicator Component
   const ProgressIndicator = () => (
     <View style={styles.progressContainer}>
@@ -203,6 +279,15 @@ export default function AddItemScreen() {
         ))}
       </View>
       <Text style={styles.progressLabel}>{STEP_LABELS[step - 1]}</Text>
+    </View>
+  );
+
+  // Preview thumbnail for steps 2 and 3
+  const PreviewThumbnail = () => (
+    <View style={styles.thumbnailContainer}>
+      {imageUri && (
+        <Image source={{ uri: imageUri }} style={styles.thumbnail} />
+      )}
     </View>
   );
 
@@ -237,16 +322,29 @@ export default function AddItemScreen() {
     );
   };
 
-  // Step 1: Photo (Instagram-style)
+  // Step 1: Photo (Instagram-style with zoom)
   const renderPhotoStep = () => {
     const galleryData: (GalleryAsset | 'camera')[] = ['camera', ...galleryAssets];
 
     return (
       <View style={styles.stepContainer}>
-        {/* Preview area - top 55% */}
+        {/* Preview area - square with white background */}
         <View style={styles.previewArea}>
           {imageUri ? (
-            <Image source={{ uri: imageUri }} style={styles.previewImage} />
+            <GestureHandlerRootView style={styles.gestureContainer}>
+              <GestureDetector gesture={composedGesture}>
+                <Animated.View style={[styles.zoomContainer, animatedImageStyle]}>
+                  <Image
+                    source={{ uri: imageUri }}
+                    style={styles.zoomableImage}
+                    resizeMode="contain"
+                  />
+                </Animated.View>
+              </GestureDetector>
+              <View style={styles.zoomHint}>
+                <Text style={styles.zoomHintText}>Pinch to zoom • Double tap to reset</Text>
+              </View>
+            </GestureHandlerRootView>
           ) : (
             <View style={styles.previewPlaceholder}>
               {loadingGallery ? (
@@ -265,7 +363,7 @@ export default function AddItemScreen() {
           )}
         </View>
 
-        {/* Gallery grid - bottom 45% */}
+        {/* Gallery grid */}
         <View style={styles.galleryArea}>
           <FlatList
             data={galleryData}
@@ -325,6 +423,8 @@ export default function AddItemScreen() {
   // Step 2: Essentials (Category + Color)
   const renderEssentialsStep = () => (
     <ScrollView style={styles.stepContainer} contentContainerStyle={styles.stepContent}>
+      <PreviewThumbnail />
+
       <Text style={styles.sectionLabel}>Category</Text>
       <View style={styles.chipContainer}>
         {CATEGORIES.map((cat) => (
@@ -365,6 +465,8 @@ export default function AddItemScreen() {
   // Step 3: Details
   const renderDetailsStep = () => (
     <ScrollView style={styles.stepContainer} contentContainerStyle={styles.stepContent}>
+      <PreviewThumbnail />
+
       <Text style={styles.sectionLabel}>Name *</Text>
       <TextInput
         style={styles.input}
@@ -432,13 +534,36 @@ export default function AddItemScreen() {
     </ScrollView>
   );
 
+  const handleClose = () => {
+    if (imageUri || name || category || color) {
+      Alert.alert(
+        'Discard Changes?',
+        'You have unsaved changes. Are you sure you want to discard them?',
+        [
+          { text: 'Keep Editing', style: 'cancel' },
+          { text: 'Discard', style: 'destructive', onPress: () => router.back() },
+        ]
+      );
+    } else {
+      router.back();
+    }
+  };
+
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      {/* Header with close button */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
+          <Text style={styles.closeButtonText}>✕</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Add Item</Text>
+        <View style={styles.headerSpacer} />
+      </View>
       <ProgressIndicator />
       {step === 1 && renderPhotoStep()}
       {step === 2 && renderEssentialsStep()}
       {step === 3 && renderDetailsStep()}
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -446,6 +571,34 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  closeButton: {
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  closeButtonText: {
+    fontSize: 20,
+    color: '#333',
+    fontWeight: '300',
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#000',
+  },
+  headerSpacer: {
+    width: 32,
   },
   progressContainer: {
     paddingTop: 16,
@@ -480,21 +633,57 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 32,
   },
-  // Step 1: Photo styles (Instagram-style)
-  previewArea: {
-    height: SCREEN_HEIGHT * 0.40,
-    backgroundColor: '#000',
+  // Thumbnail preview for steps 2 and 3
+  thumbnailContainer: {
+    alignItems: 'center',
+    marginBottom: 20,
   },
-  previewImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'contain',
+  thumbnail: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    backgroundColor: '#f5f5f5',
+  },
+  // Step 1: Photo styles with zoom
+  previewArea: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_WIDTH * 0.9,
+    backgroundColor: '#fff',
+    overflow: 'hidden',
+  },
+  gestureContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  zoomContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  zoomableImage: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_WIDTH * 0.9,
+  },
+  zoomHint: {
+    position: 'absolute',
+    bottom: 8,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  zoomHintText: {
+    fontSize: 12,
+    color: '#999',
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
   previewPlaceholder: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#f5f5f5',
   },
   placeholderText: {
     color: '#888',
@@ -590,7 +779,7 @@ const styles = StyleSheet.create({
   navigationButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    padding: 16,
+    paddingTop: 24,
     paddingBottom: 32,
     gap: 12,
   },

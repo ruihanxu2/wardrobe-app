@@ -1,5 +1,6 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
+import { TouchableOpacity, StyleSheet } from 'react-native';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -9,6 +10,18 @@ function TabBarIcon(props: {
   color: string;
 }) {
   return <FontAwesome size={24} style={{ marginBottom: -3 }} {...props} />;
+}
+
+function AddButton() {
+  const router = useRouter();
+  return (
+    <TouchableOpacity
+      style={styles.addButton}
+      onPress={() => router.push('/add')}
+    >
+      <FontAwesome name="plus" size={20} color="#007AFF" />
+    </TouchableOpacity>
+  );
 }
 
 export default function TabLayout() {
@@ -25,6 +38,7 @@ export default function TabLayout() {
         options={{
           title: 'My Wardrobe',
           tabBarIcon: ({ color }) => <TabBarIcon name="th-large" color={color} />,
+          headerRight: () => <AddButton />,
         }}
       />
       <Tabs.Screen
@@ -32,13 +46,6 @@ export default function TabLayout() {
         options={{
           title: 'Outfit',
           tabBarIcon: ({ color }) => <TabBarIcon name="magic" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="add"
-        options={{
-          title: 'Add Item',
-          tabBarIcon: ({ color }) => <TabBarIcon name="plus-circle" color={color} />,
         }}
       />
       <Tabs.Screen
@@ -51,3 +58,10 @@ export default function TabLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  addButton: {
+    marginRight: 16,
+    padding: 4,
+  },
+});

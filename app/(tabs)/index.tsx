@@ -29,7 +29,7 @@ export default function InventoryScreen() {
         <Text style={styles.emptySubtitle}>Add your first item to get started</Text>
         <TouchableOpacity
           style={styles.addButton}
-          onPress={() => router.push('/(tabs)/add')}
+          onPress={() => router.push('/add')}
         >
           <Text style={styles.addButtonText}>Add Item</Text>
         </TouchableOpacity>

@@ -46,6 +46,13 @@ function RootLayoutNav() {
             title: 'Item Details',
           }}
         />
+        <Stack.Screen
+          name="add"
+          options={{
+            presentation: 'fullScreenModal',
+            headerShown: false,
+          }}
+        />
       </Stack>
     </ThemeProvider>
   );
