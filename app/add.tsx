@@ -535,17 +535,20 @@ export default function AddItemScreen() {
   );
 
   const handleClose = () => {
-    if (imageUri || name || category || color) {
+    // Only show confirmation if user has made intentional changes beyond step 1
+    const hasUserChanges = name || category || color || step > 1;
+
+    if (hasUserChanges) {
       Alert.alert(
         'Discard Changes?',
         'You have unsaved changes. Are you sure you want to discard them?',
         [
           { text: 'Keep Editing', style: 'cancel' },
-          { text: 'Discard', style: 'destructive', onPress: () => router.back() },
+          { text: 'Discard', style: 'destructive', onPress: () => router.dismiss() },
         ]
       );
     } else {
-      router.back();
+      router.dismiss();
     }
   };
 
