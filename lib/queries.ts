@@ -50,15 +50,20 @@ export function useAddClothingItem() {
     mutationFn: async ({ imageUri, ...item }: Omit<ClothingItemInsert, 'user_id' | 'image_url'> & { imageUri: string }) => {
       if (!user) throw new Error('Not authenticated');
 
+      // Detect if image is PNG (for transparency support) or JPEG
+      const isPng = imageUri.toLowerCase().endsWith('.png') || imageUri.includes('extracted');
+      const extension = isPng ? 'png' : 'jpg';
+      const contentType = isPng ? 'image/png' : 'image/jpeg';
+
       // Upload image to Supabase Storage
-      const fileName = `${user.id}/${Date.now()}.jpg`;
+      const fileName = `${user.id}/${Date.now()}.${extension}`;
       const file = new File(imageUri);
       const base64 = await file.base64();
 
       const { error: uploadError } = await supabase.storage
         .from('clothing-images')
         .upload(fileName, decode(base64), {
-          contentType: 'image/jpeg',
+          contentType,
         });
 
       if (uploadError) throw uploadError;

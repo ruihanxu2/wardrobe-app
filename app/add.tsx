@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -24,6 +24,7 @@ import Animated, {
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useAddClothingItem } from '@/lib/queries';
 import { CATEGORIES, COLORS, OCCASIONS } from '@/constants/categories';
+import { removeBackground } from '@/lib/background-removal';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const GALLERY_ITEM_SIZE = SCREEN_WIDTH / 4;
@@ -47,7 +48,7 @@ const COLOR_VALUES: Record<string, string> = {
   'Multi': 'multi',
 };
 
-const STEP_LABELS = ['Photo', 'Category', 'Details'];
+const STEP_LABELS = ['Photo', 'Extract', 'Category', 'Details'];
 
 interface GalleryAsset {
   id: string;
@@ -60,10 +61,14 @@ export default function AddItemScreen() {
 
   // Step state
   const [step, setStep] = useState(1);
-  const totalSteps = 3;
+  const totalSteps = 4;
 
   // Form state
   const [imageUri, setImageUri] = useState<string | null>(null);
+  const [extractedUri, setExtractedUri] = useState<string | null>(null);
+
+  // Extraction state
+  const [isExtracting, setIsExtracting] = useState(false);
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
   const [color, setColor] = useState('');
@@ -152,8 +157,8 @@ export default function AddItemScreen() {
   };
 
   const handleSave = async () => {
-    if (!imageUri) {
-      Alert.alert('Error', 'Please add a photo');
+    if (!extractedUri) {
+      Alert.alert('Error', 'Please extract the clothing from the photo');
       return;
     }
     if (!name.trim()) {
@@ -171,7 +176,7 @@ export default function AddItemScreen() {
 
     try {
       await addItem.mutateAsync({
-        imageUri,
+        imageUri: extractedUri,
         name: name.trim(),
         category,
         color,
@@ -191,7 +196,8 @@ export default function AddItemScreen() {
 
   // Navigation validation
   const canProceedFromStep1 = !!imageUri;
-  const canProceedFromStep2 = !!category && !!color;
+  const canProceedFromStep2 = !!extractedUri;
+  const canProceedFromStep3 = !!category && !!color;
   const canSave = !!name.trim();
 
   const handleNext = () => {
@@ -200,6 +206,10 @@ export default function AddItemScreen() {
       return;
     }
     if (step === 2 && !canProceedFromStep2) {
+      Alert.alert('Extraction Required', 'Please extract the clothing item from the photo');
+      return;
+    }
+    if (step === 3 && !canProceedFromStep3) {
       Alert.alert('Selection Required', 'Please select both category and color');
       return;
     }
@@ -268,7 +278,7 @@ export default function AddItemScreen() {
   const ProgressIndicator = () => (
     <View style={styles.progressContainer}>
       <View style={styles.progressDots}>
-        {[1, 2, 3].map((s) => (
+        {[1, 2, 3, 4].map((s) => (
           <View
             key={s}
             style={[
@@ -282,11 +292,15 @@ export default function AddItemScreen() {
     </View>
   );
 
-  // Preview thumbnail for steps 2 and 3
+  // Preview thumbnail for steps 3 and 4 (use extracted image when available)
   const PreviewThumbnail = () => (
     <View style={styles.thumbnailContainer}>
-      {imageUri && (
-        <Image source={{ uri: imageUri }} style={styles.thumbnail} />
+      {(extractedUri || imageUri) && (
+        <View style={styles.thumbnailWrapper}>
+          {/* Checkerboard background for transparency */}
+          <View style={styles.checkerboardBg} />
+          <Image source={{ uri: extractedUri || imageUri || '' }} style={styles.thumbnail} />
+        </View>
       )}
     </View>
   );
@@ -389,6 +403,106 @@ export default function AddItemScreen() {
     );
   };
 
+  // Handle automatic background removal
+  const handleAutoRemove = async () => {
+    if (!imageUri) return;
+
+    setIsExtracting(true);
+    try {
+      const result = await removeBackground(imageUri);
+      if (result.success && result.extractedUri) {
+        setExtractedUri(result.extractedUri);
+      } else {
+        Alert.alert(
+          'Auto Remove Failed',
+          result.error || 'Background removal failed. Please try a different photo with better lighting.',
+        );
+      }
+    } catch (error: any) {
+      Alert.alert('Error', error?.message || 'Failed to remove background');
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
+  // Reset extraction
+  const handleTryAgain = () => {
+    setExtractedUri(null);
+  };
+
+  // Step 2: Extraction
+  const renderExtractionStep = () => (
+    <View style={styles.stepContainer}>
+      {/* Preview area */}
+      <View style={styles.extractionPreview}>
+        {extractedUri ? (
+          // Show extracted result with checkerboard background
+          <View style={styles.extractedImageContainer}>
+            <View style={styles.checkerboardBackground} />
+            <Image
+              source={{ uri: extractedUri }}
+              style={styles.extractedImage}
+              resizeMode="contain"
+            />
+          </View>
+        ) : (
+          // Show original image
+          <Image
+            source={{ uri: imageUri || '' }}
+            style={styles.extractionOriginalImage}
+            resizeMode="contain"
+          />
+        )}
+      </View>
+
+      {/* Status and actions */}
+      <View style={styles.extractionActions}>
+        {extractedUri ? (
+          // Show success state with Try Again option
+          <>
+            <View style={styles.extractionSuccess}>
+              <Text style={styles.extractionSuccessIcon}>✓</Text>
+              <Text style={styles.extractionSuccessText}>Background removed</Text>
+            </View>
+            <TouchableOpacity style={styles.tryAgainButton} onPress={handleTryAgain}>
+              <Text style={styles.tryAgainButtonText}>Try Again</Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          // Show extraction button
+          <TouchableOpacity
+            style={[styles.extractionButton, isExtracting && styles.extractionButtonDisabled]}
+            onPress={handleAutoRemove}
+            disabled={isExtracting}
+          >
+            {isExtracting ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <>
+                <Text style={styles.extractionButtonIcon}>✨</Text>
+                <Text style={styles.extractionButtonText}>Remove Background</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Navigation */}
+      <View style={styles.extractionNavigation}>
+        <TouchableOpacity style={styles.navButton} onPress={handleBack}>
+          <Text style={styles.navButtonText}>Back</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.navButton, styles.navButtonPrimary, !canProceedFromStep2 && styles.navButtonDisabled]}
+          onPress={handleNext}
+          disabled={!canProceedFromStep2}
+        >
+          <Text style={styles.navButtonPrimaryText}>Next</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
   // Color Circle Component
   const ColorCircle = ({ colorName }: { colorName: string }) => {
     const isSelected = color === colorName;
@@ -452,9 +566,9 @@ export default function AddItemScreen() {
           <Text style={styles.navButtonText}>Back</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.navButton, styles.navButtonPrimary, !canProceedFromStep2 && styles.navButtonDisabled]}
+          style={[styles.navButton, styles.navButtonPrimary, !canProceedFromStep3 && styles.navButtonDisabled]}
           onPress={handleNext}
-          disabled={!canProceedFromStep2}
+          disabled={!canProceedFromStep3}
         >
           <Text style={styles.navButtonPrimaryText}>Next</Text>
         </TouchableOpacity>
@@ -462,7 +576,7 @@ export default function AddItemScreen() {
     </ScrollView>
   );
 
-  // Step 3: Details
+  // Step 4: Details
   const renderDetailsStep = () => (
     <ScrollView style={styles.stepContainer} contentContainerStyle={styles.stepContent}>
       <PreviewThumbnail />
@@ -536,7 +650,7 @@ export default function AddItemScreen() {
 
   const handleClose = () => {
     // Only show confirmation if user has made intentional changes beyond step 1
-    const hasUserChanges = name || category || color || step > 1;
+    const hasUserChanges = name || category || color || extractedUri || step > 1;
 
     if (hasUserChanges) {
       Alert.alert(
@@ -564,8 +678,10 @@ export default function AddItemScreen() {
       </View>
       <ProgressIndicator />
       {step === 1 && renderPhotoStep()}
-      {step === 2 && renderEssentialsStep()}
-      {step === 3 && renderDetailsStep()}
+      {step === 2 && renderExtractionStep()}
+      {step === 3 && renderEssentialsStep()}
+      {step === 4 && renderDetailsStep()}
+
     </SafeAreaView>
   );
 }
@@ -895,5 +1011,106 @@ const styles = StyleSheet.create({
   textArea: {
     minHeight: 100,
     textAlignVertical: 'top',
+  },
+  // Thumbnail with transparency support
+  thumbnailWrapper: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  checkerboardBg: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#f5f5f5',
+    opacity: 0.5,
+  },
+  // Extraction step styles
+  extractionPreview: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  extractionOriginalImage: {
+    width: SCREEN_WIDTH - 64,
+    height: SCREEN_WIDTH - 64,
+    borderRadius: 12,
+    backgroundColor: '#f5f5f5',
+  },
+  extractedImageContainer: {
+    width: SCREEN_WIDTH - 64,
+    height: SCREEN_WIDTH - 64,
+    borderRadius: 12,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  checkerboardBackground: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#e0e0e0',
+    // Create checkerboard pattern appearance
+  },
+  extractedImage: {
+    width: '100%',
+    height: '100%',
+  },
+  extractionActions: {
+    padding: 16,
+    gap: 12,
+  },
+  extractionButton: {
+    backgroundColor: '#000',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  extractionButtonDisabled: {
+    backgroundColor: '#ccc',
+  },
+  extractionButtonIcon: {
+    fontSize: 18,
+  },
+  extractionButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  extractionSuccess: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+  },
+  extractionSuccessIcon: {
+    fontSize: 20,
+    color: '#2ECC40',
+  },
+  extractionSuccessText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2ECC40',
+  },
+  tryAgainButton: {
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  tryAgainButtonText: {
+    color: '#666',
+    fontSize: 14,
+    textDecorationLine: 'underline',
+  },
+  extractionNavigation: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 16,
+    paddingBottom: 32,
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
   },
 });
