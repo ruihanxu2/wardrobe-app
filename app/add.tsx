@@ -81,6 +81,9 @@ export default function AddItemScreen() {
   const [galleryPermission, setGalleryPermission] = useState<boolean | null>(null);
   const [loadingGallery, setLoadingGallery] = useState(true);
 
+  // Image dimensions for proper crop calculation
+  const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
+
   // Zoom state
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
@@ -88,9 +91,54 @@ export default function AddItemScreen() {
   const translateY = useSharedValue(0);
   const savedTranslateX = useSharedValue(0);
   const savedTranslateY = useSharedValue(0);
+  // fillScale is the minimum scale at which the image fills the viewport
+  const fillScale = useSharedValue(1);
+  // imageAspect ratio for clamp calculations in worklets
+  const imageAspect = useSharedValue(1);
 
-  // Reset zoom when image changes
+  // Get image dimensions when image changes
   useEffect(() => {
+    if (imageUri) {
+      Image.getSize(
+        imageUri,
+        (width, height) => {
+          setImageDimensions({ width, height });
+          // Calculate fill scale based on image aspect ratio vs viewport
+          const viewportWidth = PREVIEW_SIZE;
+          const viewportHeight = PREVIEW_SIZE * 0.9;
+          const imgAspect = width / height;
+          const viewportAspect = viewportWidth / viewportHeight;
+
+          imageAspect.value = imgAspect;
+
+          // With resizeMode="contain", the image fits within the viewport
+          // fillScale is how much we need to zoom for it to fill the viewport
+          if (imgAspect > viewportAspect) {
+            // Image is wider than viewport - letterboxed top/bottom
+            // At contain, image width = viewportWidth, image height = viewportWidth / imgAspect
+            // To fill: need to scale up so image height = viewportHeight
+            fillScale.value = viewportHeight / (viewportWidth / imgAspect);
+          } else {
+            // Image is taller than viewport - letterboxed left/right
+            // At contain, image height = viewportHeight, image width = viewportHeight * imgAspect
+            // To fill: need to scale up so image width = viewportWidth
+            fillScale.value = viewportWidth / (viewportHeight * imgAspect);
+          }
+        },
+        (error) => {
+          console.log('Failed to get image size:', error);
+          setImageDimensions(null);
+          fillScale.value = 1;
+          imageAspect.value = 1;
+        }
+      );
+    } else {
+      setImageDimensions(null);
+      fillScale.value = 1;
+      imageAspect.value = 1;
+    }
+
+    // Reset zoom when image changes
     scale.value = 1;
     savedScale.value = 1;
     translateX.value = 0;
@@ -186,7 +234,7 @@ export default function AddItemScreen() {
       });
 
       Alert.alert('Success', 'Item added to your wardrobe!', [
-        { text: 'OK', onPress: () => router.push('/(tabs)') },
+        { text: 'OK', onPress: () => router.dismiss() },
       ]);
     } catch (error: any) {
       console.error('Add item error:', error);
@@ -224,16 +272,74 @@ export default function AddItemScreen() {
     }
   };
 
+  // Helper to clamp translation based on current scale and fillScale
+  // When scale < fillScale, image doesn't fill viewport, so center it (no panning)
+  // When scale >= fillScale, limit panning so image always fills the viewport
+  const clampTranslation = (
+    translate: number,
+    currentScale: number,
+    currentFillScale: number,
+    viewportSize: number,
+    axis: 'x' | 'y',
+    imageAspect: number
+  ) => {
+    'worklet';
+    if (currentScale < currentFillScale) {
+      return 0; // Center the image when it doesn't fill the viewport
+    }
+
+    // Calculate the contained image size at scale=1
+    const viewportWidth = PREVIEW_SIZE;
+    const viewportHeight = PREVIEW_SIZE * 0.9;
+    const viewportAspect = viewportWidth / viewportHeight;
+
+    let containedSize: number;
+    if (imageAspect > viewportAspect) {
+      // Image is wider - at contain, width fills viewport
+      containedSize = axis === 'x' ? viewportWidth : viewportWidth / imageAspect;
+    } else {
+      // Image is taller - at contain, height fills viewport
+      containedSize = axis === 'x' ? viewportHeight * imageAspect : viewportHeight;
+    }
+
+    // Scaled image size
+    const scaledSize = containedSize * currentScale;
+    // Max translation before edge shows
+    const maxTranslate = Math.max(0, (scaledSize - viewportSize) / 2);
+    return Math.max(-maxTranslate, Math.min(maxTranslate, translate));
+  };
+
   // Pinch gesture for zoom
   const pinchGesture = Gesture.Pinch()
     .onUpdate((event: { scale: number }) => {
+      // Allow zooming from 0.5 to 3 during gesture
       scale.value = Math.max(0.5, Math.min(savedScale.value * event.scale, 3));
     })
     .onEnd(() => {
-      savedScale.value = scale.value;
-      // Snap back if zoomed out too much
+      // If scale < 1, reset to 1 (Instagram behavior)
       if (scale.value < 1) {
-        scale.value = withSpring(scale.value);
+        scale.value = withSpring(1);
+        savedScale.value = 1;
+        // Also reset translation when resetting scale
+        translateX.value = withSpring(0);
+        translateY.value = withSpring(0);
+        savedTranslateX.value = 0;
+        savedTranslateY.value = 0;
+      } else {
+        savedScale.value = scale.value;
+        // Always clamp translation to ensure image fills viewport after zoom
+        const clampedX = clampTranslation(
+          translateX.value, scale.value, fillScale.value,
+          PREVIEW_SIZE, 'x', imageAspect.value
+        );
+        const clampedY = clampTranslation(
+          translateY.value, scale.value, fillScale.value,
+          PREVIEW_SIZE * 0.9, 'y', imageAspect.value
+        );
+        translateX.value = withSpring(clampedX);
+        translateY.value = withSpring(clampedY);
+        savedTranslateX.value = clampedX;
+        savedTranslateY.value = clampedY;
       }
     });
 
@@ -244,8 +350,20 @@ export default function AddItemScreen() {
       translateY.value = savedTranslateY.value + event.translationY;
     })
     .onEnd(() => {
-      savedTranslateX.value = translateX.value;
-      savedTranslateY.value = translateY.value;
+      // Always clamp and animate to ensure image fills the viewport
+      const clampedX = clampTranslation(
+        translateX.value, scale.value, fillScale.value,
+        PREVIEW_SIZE, 'x', imageAspect.value
+      );
+      const clampedY = clampTranslation(
+        translateY.value, scale.value, fillScale.value,
+        PREVIEW_SIZE * 0.9, 'y', imageAspect.value
+      );
+
+      translateX.value = withSpring(clampedX);
+      translateY.value = withSpring(clampedY);
+      savedTranslateX.value = clampedX;
+      savedTranslateY.value = clampedY;
     });
 
   // Double tap to reset
