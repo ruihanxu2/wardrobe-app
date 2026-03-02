@@ -67,6 +67,14 @@ export default function AddItemScreen() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [extractedUri, setExtractedUri] = useState<string | null>(null);
 
+  // Crop region in original image coordinates (top-left x, y, width, height)
+  const [cropRegion, setCropRegion] = useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
+
   // Extraction state
   const [isExtracting, setIsExtracting] = useState(false);
   const [name, setName] = useState('');
@@ -138,13 +146,17 @@ export default function AddItemScreen() {
       imageAspect.value = 1;
     }
 
-    // Reset zoom when image changes
+    // Reset zoom and crop when image changes
     scale.value = 1;
     savedScale.value = 1;
     translateX.value = 0;
     translateY.value = 0;
     savedTranslateX.value = 0;
     savedTranslateY.value = 0;
+
+    // Reset crop region and extracted images when source image changes
+    setCropRegion(null);
+    setExtractedUri(null);
   }, [imageUri]);
 
   // Load gallery on mount
@@ -205,8 +217,12 @@ export default function AddItemScreen() {
   };
 
   const handleSave = async () => {
-    if (!extractedUri) {
-      Alert.alert('Error', 'Please extract the clothing from the photo');
+    // Use extracted image if available, otherwise use original
+    // TODO: Apply actual crop using cropParams before uploading
+    const finalImageUri = extractedUri || imageUri;
+
+    if (!finalImageUri) {
+      Alert.alert('Error', 'Please add a photo');
       return;
     }
     if (!name.trim()) {
@@ -224,7 +240,7 @@ export default function AddItemScreen() {
 
     try {
       await addItem.mutateAsync({
-        imageUri: extractedUri,
+        imageUri: finalImageUri,
         name: name.trim(),
         category,
         color,
@@ -244,7 +260,6 @@ export default function AddItemScreen() {
 
   // Navigation validation
   const canProceedFromStep1 = !!imageUri;
-  const canProceedFromStep2 = !!extractedUri;
   const canProceedFromStep3 = !!category && !!color;
   const canSave = !!name.trim();
 
@@ -253,10 +268,53 @@ export default function AddItemScreen() {
       Alert.alert('Photo Required', 'Please select a photo to continue');
       return;
     }
-    if (step === 2 && !canProceedFromStep2) {
-      Alert.alert('Extraction Required', 'Please extract the clothing item from the photo');
+
+    // Calculate crop region in original image coordinates when moving from step 1 to step 2
+    if (step === 1 && imageDimensions) {
+      const currentScale = savedScale.value;
+      const currentTranslateX = savedTranslateX.value;
+      const currentTranslateY = savedTranslateY.value;
+      const imgAspect = imageAspect.value;
+
+      // Viewport dimensions
+      const viewportWidth = PREVIEW_SIZE;
+      const viewportHeight = PREVIEW_SIZE * 0.9;
+      const viewportAspect = viewportWidth / viewportHeight;
+
+      // Calculate contained image size at scale=1
+      let containedWidth: number;
+      let containedHeight: number;
+      if (imgAspect > viewportAspect) {
+        containedWidth = viewportWidth;
+        containedHeight = viewportWidth / imgAspect;
+      } else {
+        containedHeight = viewportHeight;
+        containedWidth = viewportHeight * imgAspect;
+      }
+
+      // Visible region in "contained image" coordinates
+      const visibleWidth = viewportWidth / currentScale;
+      const visibleHeight = viewportHeight / currentScale;
+      const visibleCenterX = (containedWidth / 2) - (currentTranslateX / currentScale);
+      const visibleCenterY = (containedHeight / 2) - (currentTranslateY / currentScale);
+
+      // Convert to original image pixel coordinates
+      const scaleToOriginal = imageDimensions.width / containedWidth;
+      const cropX = Math.max(0, (visibleCenterX - visibleWidth / 2) * scaleToOriginal);
+      const cropY = Math.max(0, (visibleCenterY - visibleHeight / 2) * scaleToOriginal);
+      const cropWidth = Math.min(visibleWidth * scaleToOriginal, imageDimensions.width - cropX);
+      const cropHeight = Math.min(visibleHeight * scaleToOriginal, imageDimensions.height - cropY);
+
+      setCropRegion({
+        x: Math.round(cropX),
+        y: Math.round(cropY),
+        width: Math.round(cropWidth),
+        height: Math.round(cropHeight),
+      });
+      setStep(2);
       return;
     }
+
     if (step === 3 && !canProceedFromStep3) {
       Alert.alert('Selection Required', 'Please select both category and color');
       return;
@@ -410,18 +468,63 @@ export default function AddItemScreen() {
     </View>
   );
 
-  // Preview thumbnail for steps 3 and 4 (use extracted image when available)
-  const PreviewThumbnail = () => (
-    <View style={styles.thumbnailContainer}>
-      {(extractedUri || imageUri) && (
-        <View style={styles.thumbnailWrapper}>
-          {/* Checkerboard background for transparency */}
-          <View style={styles.checkerboardBg} />
-          <Image source={{ uri: extractedUri || imageUri || '' }} style={styles.thumbnail} />
+  // Preview thumbnail for steps 2, 3, and 4 (shows cropped image)
+  const PreviewThumbnail = ({ size = 80 }: { size?: number }) => {
+    if (!imageUri) return null;
+
+    // If we have extracted image, show it directly
+    if (extractedUri) {
+      return (
+        <View style={styles.thumbnailContainer}>
+          <View style={[styles.thumbnailWrapper, { width: size, height: size }]}>
+            <View style={styles.checkerboardBg} />
+            <Image source={{ uri: extractedUri }} style={[styles.thumbnail, { width: size, height: size }]} />
+          </View>
         </View>
-      )}
-    </View>
-  );
+      );
+    }
+
+    // Show cropped preview using cropRegion
+    if (cropRegion && imageDimensions) {
+      // Scale factor: how much to scale the original image so cropRegion.width fits in `size`
+      const displayScale = size / cropRegion.width;
+
+      // Full image dimensions when scaled
+      const scaledImageWidth = imageDimensions.width * displayScale;
+      const scaledImageHeight = imageDimensions.height * displayScale;
+
+      // Translate to position crop region at top-left of view
+      const translateX = -cropRegion.x * displayScale;
+      const translateY = -cropRegion.y * displayScale;
+
+      return (
+        <View style={styles.thumbnailContainer}>
+          <View style={[styles.thumbnailWrapper, { width: size, height: size, overflow: 'hidden' }]}>
+            <Image
+              source={{ uri: imageUri }}
+              style={{
+                width: scaledImageWidth,
+                height: scaledImageHeight,
+                transform: [
+                  { translateX },
+                  { translateY },
+                ],
+              }}
+            />
+          </View>
+        </View>
+      );
+    }
+
+    // Fallback: show original image
+    return (
+      <View style={styles.thumbnailContainer}>
+        <View style={[styles.thumbnailWrapper, { width: size, height: size }]}>
+          <Image source={{ uri: imageUri }} style={[styles.thumbnail, { width: size, height: size }]} />
+        </View>
+      </View>
+    );
+  };
 
   // Gallery item renderer
   const renderGalleryItem = ({ item, index }: { item: GalleryAsset | 'camera'; index: number }) => {
@@ -522,6 +625,7 @@ export default function AddItemScreen() {
   };
 
   // Handle automatic background removal
+  // TODO: Apply actual crop before sending to API
   const handleAutoRemove = async () => {
     if (!imageUri) return;
 
@@ -548,6 +652,46 @@ export default function AddItemScreen() {
     setExtractedUri(null);
   };
 
+  // Render cropped image preview using cropRegion
+  const renderCroppedPreview = (previewSize: number) => {
+    if (!imageUri || !cropRegion || !imageDimensions) {
+      return (
+        <Image
+          source={{ uri: imageUri || '' }}
+          style={{ width: previewSize, height: previewSize }}
+          resizeMode="contain"
+        />
+      );
+    }
+
+    // Scale factor: scale original image so cropRegion.width fits in previewSize
+    const displayScale = previewSize / cropRegion.width;
+
+    // Full image dimensions when scaled
+    const scaledImageWidth = imageDimensions.width * displayScale;
+    const scaledImageHeight = imageDimensions.height * displayScale;
+
+    // Translate to position crop region at top-left of view
+    const translateX = -cropRegion.x * displayScale;
+    const translateY = -cropRegion.y * displayScale;
+
+    return (
+      <View style={{ width: previewSize, height: previewSize, overflow: 'hidden' }}>
+        <Image
+          source={{ uri: imageUri }}
+          style={{
+            width: scaledImageWidth,
+            height: scaledImageHeight,
+            transform: [
+              { translateX },
+              { translateY },
+            ],
+          }}
+        />
+      </View>
+    );
+  };
+
   // Step 2: Extraction
   const renderExtractionStep = () => (
     <View style={styles.stepContainer}>
@@ -564,12 +708,8 @@ export default function AddItemScreen() {
             />
           </View>
         ) : (
-          // Show original image
-          <Image
-            source={{ uri: imageUri || '' }}
-            style={styles.extractionOriginalImage}
-            resizeMode="contain"
-          />
+          // Show cropped image preview with transforms
+          renderCroppedPreview(PREVIEW_SIZE * 0.8)
         )}
       </View>
 
@@ -611,11 +751,12 @@ export default function AddItemScreen() {
           <Text style={styles.navButtonText}>Back</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.navButton, styles.navButtonPrimary, !canProceedFromStep2 && styles.navButtonDisabled]}
+          style={[styles.navButton, styles.navButtonPrimary]}
           onPress={handleNext}
-          disabled={!canProceedFromStep2}
         >
-          <Text style={styles.navButtonPrimaryText}>Next</Text>
+          <Text style={styles.navButtonPrimaryText}>
+            {extractedUri ? 'Next' : 'Skip'}
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
