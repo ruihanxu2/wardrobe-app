@@ -1,10 +1,41 @@
-import { View, Text, FlatList, Image, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { useState, useMemo } from 'react';
+import { View, Text, FlatList, Image, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useClothingItems } from '@/lib/queries';
+import { CATEGORIES } from '@/constants/categories';
 
 export default function InventoryScreen() {
   const router = useRouter();
   const { data: items, isLoading, error } = useClothingItems();
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
+  const filteredItems = useMemo(() => {
+    if (!items) return [];
+
+    let result = items;
+
+    // Filter by category
+    if (selectedCategory !== 'All') {
+      result = result.filter(item => item.category === selectedCategory);
+    }
+
+    // Filter by search (name or brand)
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      result = result.filter(item =>
+        item.name.toLowerCase().includes(query) ||
+        (item.brand && item.brand.toLowerCase().includes(query))
+      );
+    }
+
+    return result;
+  }, [items, selectedCategory, searchQuery]);
+
+  const clearFilters = () => {
+    setSelectedCategory('All');
+    setSearchQuery('');
+  };
 
   if (isLoading) {
     return (
@@ -37,26 +68,77 @@ export default function InventoryScreen() {
     );
   }
 
+  const hasActiveFilters = selectedCategory !== 'All' || searchQuery.trim() !== '';
+
   return (
     <View style={styles.container}>
-      <FlatList
-        data={items}
-        keyExtractor={(item) => item.id}
-        numColumns={2}
-        contentContainerStyle={styles.grid}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.itemCard}
-            onPress={() => router.push(`/item/${item.id}`)}
-          >
-            <Image source={{ uri: item.image_url }} style={styles.itemImage} />
-            <View style={styles.itemInfo}>
-              <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
-              <Text style={styles.itemCategory}>{item.category}</Text>
-            </View>
-          </TouchableOpacity>
-        )}
-      />
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search by name or brand..."
+          placeholderTextColor="#999"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          clearButtonMode="while-editing"
+        />
+      </View>
+
+      {/* Category Tabs */}
+      <View style={styles.tabsContainer}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabsContent}
+        >
+          {['All', ...CATEGORIES].map((category) => (
+            <TouchableOpacity
+              key={category}
+              style={[styles.tab, selectedCategory === category && styles.tabSelected]}
+              onPress={() => setSelectedCategory(category)}
+            >
+              <Text style={[styles.tabText, selectedCategory === category && styles.tabTextSelected]}>
+                {category}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
+      {/* Grid or Empty State */}
+      {filteredItems.length === 0 ? (
+        <View style={styles.emptyFilterContainer}>
+          <Text style={styles.emptyFilterTitle}>No items found</Text>
+          <Text style={styles.emptyFilterSubtitle}>
+            {hasActiveFilters ? 'Try adjusting your filters' : 'Add items to your wardrobe'}
+          </Text>
+          {hasActiveFilters && (
+            <TouchableOpacity style={styles.clearFiltersButton} onPress={clearFilters}>
+              <Text style={styles.clearFiltersText}>Clear Filters</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      ) : (
+        <FlatList
+          data={filteredItems}
+          keyExtractor={(item) => item.id}
+          numColumns={2}
+          contentContainerStyle={styles.grid}
+          keyboardDismissMode="on-drag"
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={styles.itemCard}
+              onPress={() => router.push(`/item/${item.id}`)}
+            >
+              <Image source={{ uri: item.image_url }} style={styles.itemImage} />
+              <View style={styles.itemInfo}>
+                <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
+                <Text style={styles.itemCategory}>{item.category}</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+        />
+      )}
     </View>
   );
 }
@@ -96,6 +178,72 @@ const styles = StyleSheet.create({
   errorText: {
     color: '#ff3b30',
     fontSize: 16,
+  },
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+    backgroundColor: '#fff',
+  },
+  searchInput: {
+    backgroundColor: '#f5f5f5',
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 16,
+  },
+  tabsContainer: {
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  tabsContent: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  tab: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: '#f5f5f5',
+  },
+  tabSelected: {
+    backgroundColor: '#000',
+  },
+  tabText: {
+    fontSize: 14,
+    color: '#333',
+    fontWeight: '500',
+  },
+  tabTextSelected: {
+    color: '#fff',
+  },
+  emptyFilterContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  emptyFilterTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  emptyFilterSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 16,
+  },
+  clearFiltersButton: {
+    backgroundColor: '#000',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  clearFiltersText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
   },
   grid: {
     padding: 8,
