@@ -79,6 +79,7 @@ const DraggableItem = ({
   const startY = useRef(canvasItem.y);
   const hasMoved = useRef(false);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isTouchActive = useRef(false);
 
   // Use refs to avoid stale closures
   const canvasHeightRef = useRef(canvasHeight);
@@ -105,6 +106,7 @@ const DraggableItem = ({
       onPanResponderGrant: () => {
         setIsActive(true);
         hasMoved.current = false;
+        isTouchActive.current = true;
         onDragStateChangeRef.current(true, itemIdRef.current);
         startY.current = (pan.y as any)._value;
         pan.setOffset({
@@ -113,9 +115,9 @@ const DraggableItem = ({
         });
         pan.setValue({ x: 0, y: 0 });
 
-        // Start long press timer
+        // Start long press timer - only trigger if touch still active after 500ms
         longPressTimer.current = setTimeout(() => {
-          if (!hasMoved.current) {
+          if (!hasMoved.current && isTouchActive.current) {
             onLongPressRef.current(itemIdRef.current);
           }
         }, 500);
@@ -164,6 +166,9 @@ const DraggableItem = ({
         }
       },
       onPanResponderRelease: () => {
+        // Mark touch as inactive FIRST to prevent timer from firing
+        isTouchActive.current = false;
+
         // Clear long press timer
         if (longPressTimer.current) {
           clearTimeout(longPressTimer.current);
@@ -195,6 +200,19 @@ const DraggableItem = ({
         }
 
         setIsOverTrash(false);
+        onDragStateChangeRef.current(false, itemIdRef.current);
+      },
+      onPanResponderTerminate: () => {
+        // Touch was interrupted - clean up
+        isTouchActive.current = false;
+        if (longPressTimer.current) {
+          clearTimeout(longPressTimer.current);
+          longPressTimer.current = null;
+        }
+        pan.flattenOffset();
+        setIsActive(false);
+        setIsOverTrash(false);
+        lastDistance.current = 0;
         onDragStateChangeRef.current(false, itemIdRef.current);
       },
     })
