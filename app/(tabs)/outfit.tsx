@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -238,7 +238,21 @@ export default function OutfitScreen() {
   const [canvasHeight, setCanvasHeight] = useState(400);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [deleteItemId, setDeleteItemId] = useState<string | null>(null);
+  const [deleteButtonReady, setDeleteButtonReady] = useState(false);
   const nextZIndex = useRef(1);
+
+  // Delay before delete button becomes active
+  useEffect(() => {
+    if (deleteItemId) {
+      setDeleteButtonReady(false);
+      const timer = setTimeout(() => {
+        setDeleteButtonReady(true);
+      }, 500);
+      return () => clearTimeout(timer);
+    } else {
+      setDeleteButtonReady(false);
+    }
+  }, [deleteItemId]);
 
   // Modal state
   const [modalVisible, setModalVisible] = useState(false);
@@ -451,7 +465,11 @@ export default function OutfitScreen() {
 
                 {/* Controls inside canvas at bottom */}
                 {deleteItemId ? (
-                  <TouchableOpacity style={styles.canvasInnerDelete} onPress={confirmDelete}>
+                  <TouchableOpacity
+                    style={[styles.canvasInnerDelete, !deleteButtonReady && styles.canvasInnerDeleteDisabled]}
+                    onPress={deleteButtonReady ? confirmDelete : undefined}
+                    activeOpacity={deleteButtonReady ? 0.7 : 1}
+                  >
                     <Trash2 size={24} color="#fff" />
                   </TouchableOpacity>
                 ) : selectedItemId ? (
@@ -797,6 +815,9 @@ const styles = StyleSheet.create({
     zIndex: 999,
     left: '50%',
     marginLeft: -28,
+  },
+  canvasInnerDeleteDisabled: {
+    opacity: 0.5,
   },
   layerButton: {
     width: 48,
