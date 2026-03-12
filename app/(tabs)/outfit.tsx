@@ -80,6 +80,7 @@ const DraggableItem = ({
   const hasMoved = useRef(false);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTouchActive = useRef(false);
+  const dragNotified = useRef(false);
 
   // Use refs to avoid stale closures
   const canvasHeightRef = useRef(canvasHeight);
@@ -107,7 +108,7 @@ const DraggableItem = ({
         setIsActive(true);
         hasMoved.current = false;
         isTouchActive.current = true;
-        onDragStateChangeRef.current(true, itemIdRef.current);
+        dragNotified.current = false;
         startY.current = (pan.y as any)._value;
         pan.setOffset({
           x: (pan.x as any)._value,
@@ -123,12 +124,17 @@ const DraggableItem = ({
         }, 500);
       },
       onPanResponderMove: (evt, gestureState) => {
-        // Check if moved enough to cancel tap/long press
+        // Check if moved enough to cancel tap/long press and start dragging
         if (Math.abs(gestureState.dx) > 10 || Math.abs(gestureState.dy) > 10) {
           hasMoved.current = true;
           if (longPressTimer.current) {
             clearTimeout(longPressTimer.current);
             longPressTimer.current = null;
+          }
+          // Notify drag started only once
+          if (!dragNotified.current) {
+            dragNotified.current = true;
+            onDragStateChangeRef.current(true, itemIdRef.current);
           }
         }
 
