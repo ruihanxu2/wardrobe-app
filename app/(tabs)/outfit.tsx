@@ -13,13 +13,14 @@ import {
   PanResponder,
   Dimensions,
 } from 'react-native';
-import { Shirt, Footprints, Layers, Plus, ArrowRight, Hand, Trash2, ChevronUp, ChevronDown } from 'lucide-react-native';
+import { Shirt, Footprints, Layers, Plus, ArrowRight, Hand, Trash2, ChevronUp, ChevronDown, Check } from 'lucide-react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useClothingItems } from '@/lib/queries';
 import { ClothingItem } from '@/types';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const ITEM_SIZE = 100;
+const MAX_CANVAS_ITEMS = 10;
 
 // Custom Pants icon
 const Pants = ({ size = 24, color = '#000' }: { size?: number; color?: string }) => (
@@ -227,11 +228,43 @@ export default function OutfitScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [activeSlot, setActiveSlot] = useState<SlotType | null>(null);
   const [activeLayerIndex, setActiveLayerIndex] = useState<number>(0);
+  const [selectedModalItems, setSelectedModalItems] = useState<ClothingItem[]>([]);
 
   const openPicker = (slot: SlotType, layerIndex: number = 0) => {
     setActiveSlot(slot);
     setActiveLayerIndex(layerIndex);
+    setSelectedModalItems([]);
     setModalVisible(true);
+  };
+
+  const closePicker = () => {
+    setModalVisible(false);
+    setSelectedModalItems([]);
+  };
+
+  const toggleModalItem = (item: ClothingItem) => {
+    const isSelected = selectedModalItems.some(i => i.id === item.id);
+    if (isSelected) {
+      setSelectedModalItems(prev => prev.filter(i => i.id !== item.id));
+    } else {
+      const remainingSlots = MAX_CANVAS_ITEMS - canvasItems.length;
+      if (selectedModalItems.length < remainingSlots) {
+        setSelectedModalItems(prev => [...prev, item]);
+      }
+    }
+  };
+
+  const addSelectedItems = () => {
+    const newItems: CanvasItem[] = selectedModalItems.map((item, index) => ({
+      id: `${item.id}-${Date.now()}-${index}`,
+      item,
+      x: (SCREEN_WIDTH - ITEM_SIZE) / 2 - 16 + (index * 20),
+      y: 100 + (index * 20),
+      scale: 1,
+      zIndex: nextZIndex.current++,
+    }));
+    setCanvasItems(prev => [...prev, ...newItems]);
+    closePicker();
   };
 
   const selectItem = (item: ClothingItem) => {
@@ -243,18 +276,8 @@ export default function OutfitScreen() {
       setSelectedBottom(item);
     } else if (activeSlot === 'shoes') {
       setSelectedShoes(item);
-    } else if (activeSlot === 'canvas') {
-      const newCanvasItem: CanvasItem = {
-        id: `${item.id}-${Date.now()}`,
-        item,
-        x: (SCREEN_WIDTH - ITEM_SIZE) / 2 - 16,
-        y: 100,
-        scale: 1,
-        zIndex: nextZIndex.current++,
-      };
-      setCanvasItems([...canvasItems, newCanvasItem]);
     }
-    setModalVisible(false);
+    closePicker();
   };
 
   const clearSlot = (slot: SlotType, layerIndex: number = 0) => {
@@ -433,11 +456,20 @@ export default function OutfitScreen() {
           {/* Add button */}
           <View style={styles.canvasControls}>
             <TouchableOpacity
-              style={styles.canvasAddButton}
+              style={[
+                styles.canvasAddButton,
+                canvasItems.length >= MAX_CANVAS_ITEMS && styles.canvasAddButtonDisabled
+              ]}
               onPress={() => openPicker('canvas')}
+              disabled={canvasItems.length >= MAX_CANVAS_ITEMS}
             >
               <Plus size={28} color="#fff" />
             </TouchableOpacity>
+            {canvasItems.length > 0 && (
+              <Text style={styles.canvasCountText}>
+                {canvasItems.length}/{MAX_CANVAS_ITEMS}
+              </Text>
+            )}
           </View>
         </View>
       ) : (
@@ -520,14 +552,34 @@ export default function OutfitScreen() {
         visible={modalVisible}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setModalVisible(false)}
+        onRequestClose={closePicker}
       >
         <View style={styles.modalContainer}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>{getSlotTitle()}</Text>
-            <TouchableOpacity onPress={() => setModalVisible(false)}>
-              <Text style={styles.closeButton}>Close</Text>
+            <TouchableOpacity onPress={closePicker}>
+              <Text style={styles.closeButton}>Cancel</Text>
             </TouchableOpacity>
+            <Text style={styles.modalTitle}>
+              {activeSlot === 'canvas'
+                ? `Select Items (${selectedModalItems.length}/${MAX_CANVAS_ITEMS - canvasItems.length})`
+                : getSlotTitle()
+              }
+            </Text>
+            {activeSlot === 'canvas' ? (
+              <TouchableOpacity
+                onPress={addSelectedItems}
+                disabled={selectedModalItems.length === 0}
+              >
+                <Text style={[
+                  styles.addButtonText,
+                  selectedModalItems.length === 0 && styles.addButtonTextDisabled
+                ]}>
+                  Add
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={{ width: 50 }} />
+            )}
           </View>
 
           {getFilteredItems().length === 0 ? (
@@ -541,14 +593,37 @@ export default function OutfitScreen() {
               keyExtractor={item => item.id}
               numColumns={3}
               contentContainerStyle={styles.grid}
-              renderItem={({ item }) => (
-                <TouchableOpacity style={styles.gridItem} onPress={() => selectItem(item)}>
-                  <Image source={{ uri: item.image_url }} style={styles.gridImage} />
-                  <Text style={styles.gridLabel} numberOfLines={1}>
-                    {item.name}
-                  </Text>
-                </TouchableOpacity>
-              )}
+              renderItem={({ item }) => {
+                const isItemSelected = selectedModalItems.some(i => i.id === item.id);
+                const remainingSlots = MAX_CANVAS_ITEMS - canvasItems.length;
+                const canSelect = isItemSelected || selectedModalItems.length < remainingSlots;
+
+                return (
+                  <TouchableOpacity
+                    style={styles.gridItem}
+                    onPress={() => activeSlot === 'canvas' ? toggleModalItem(item) : selectItem(item)}
+                    disabled={activeSlot === 'canvas' && !canSelect}
+                  >
+                    <View>
+                      <Image
+                        source={{ uri: item.image_url }}
+                        style={[
+                          styles.gridImage,
+                          activeSlot === 'canvas' && !canSelect && styles.gridImageDisabled
+                        ]}
+                      />
+                      {activeSlot === 'canvas' && isItemSelected && (
+                        <View style={styles.selectedBadge}>
+                          <Check size={16} color="#fff" />
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.gridLabel} numberOfLines={1}>
+                      {item.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              }}
             />
           )}
         </View>
@@ -787,6 +862,14 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
+  canvasAddButtonDisabled: {
+    backgroundColor: '#ccc',
+  },
+  canvasCountText: {
+    marginTop: 8,
+    fontSize: 12,
+    color: '#999',
+  },
   // Modal styles
   modalContainer: {
     flex: 1,
@@ -837,10 +920,32 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: '#f5f5f5',
   },
+  gridImageDisabled: {
+    opacity: 0.4,
+  },
   gridLabel: {
     fontSize: 12,
     textAlign: 'center',
     marginTop: 4,
     color: '#333',
+  },
+  selectedBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#007AFF',
+  },
+  addButtonTextDisabled: {
+    color: '#ccc',
   },
 });
