@@ -54,9 +54,7 @@ const DraggableItem = ({
   onDragStateChange,
   onDelete,
   onTap,
-  onLongPress,
   isSelected,
-  isInDeleteMode,
   canvasHeight,
 }: {
   canvasItem: CanvasItem;
@@ -64,9 +62,7 @@ const DraggableItem = ({
   onDragStateChange: (isDragging: boolean, id: string) => void;
   onDelete: (id: string) => void;
   onTap: (id: string) => void;
-  onLongPress: (id: string) => void;
   isSelected: boolean;
-  isInDeleteMode: boolean;
   canvasHeight: number;
 }) => {
   const pan = useRef(new Animated.ValueXY({ x: canvasItem.x, y: canvasItem.y })).current;
@@ -78,8 +74,6 @@ const DraggableItem = ({
   const lastDistance = useRef(0);
   const startY = useRef(canvasItem.y);
   const hasMoved = useRef(false);
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isTouchActive = useRef(false);
   const dragNotified = useRef(false);
 
   // Use refs to avoid stale closures
@@ -88,7 +82,6 @@ const DraggableItem = ({
   const onUpdateRef = useRef(onUpdate);
   const onDragStateChangeRef = useRef(onDragStateChange);
   const onTapRef = useRef(onTap);
-  const onLongPressRef = useRef(onLongPress);
   const itemIdRef = useRef(canvasItem.id);
 
   // Update refs when props change
@@ -97,7 +90,6 @@ const DraggableItem = ({
   onUpdateRef.current = onUpdate;
   onDragStateChangeRef.current = onDragStateChange;
   onTapRef.current = onTap;
-  onLongPressRef.current = onLongPress;
   itemIdRef.current = canvasItem.id;
 
   const panResponder = useRef(
@@ -107,7 +99,6 @@ const DraggableItem = ({
       onPanResponderGrant: () => {
         setIsActive(true);
         hasMoved.current = false;
-        isTouchActive.current = true;
         dragNotified.current = false;
         startY.current = (pan.y as any)._value;
         pan.setOffset({
@@ -115,22 +106,11 @@ const DraggableItem = ({
           y: (pan.y as any)._value,
         });
         pan.setValue({ x: 0, y: 0 });
-
-        // Start long press timer - only trigger if touch still active after 500ms
-        longPressTimer.current = setTimeout(() => {
-          if (!hasMoved.current && isTouchActive.current) {
-            onLongPressRef.current(itemIdRef.current);
-          }
-        }, 500);
       },
       onPanResponderMove: (evt, gestureState) => {
-        // Check if moved enough to cancel tap/long press and start dragging
+        // Check if moved enough to start dragging
         if (Math.abs(gestureState.dx) > 10 || Math.abs(gestureState.dy) > 10) {
           hasMoved.current = true;
-          if (longPressTimer.current) {
-            clearTimeout(longPressTimer.current);
-            longPressTimer.current = null;
-          }
           // Notify drag started only once
           if (!dragNotified.current) {
             dragNotified.current = true;
@@ -141,10 +121,6 @@ const DraggableItem = ({
         // Handle pinch zoom with two fingers
         if (evt.nativeEvent.touches.length === 2) {
           hasMoved.current = true;
-          if (longPressTimer.current) {
-            clearTimeout(longPressTimer.current);
-            longPressTimer.current = null;
-          }
           const touch1 = evt.nativeEvent.touches[0];
           const touch2 = evt.nativeEvent.touches[1];
           const distance = Math.sqrt(
@@ -172,15 +148,6 @@ const DraggableItem = ({
         }
       },
       onPanResponderRelease: () => {
-        // Mark touch as inactive FIRST to prevent timer from firing
-        isTouchActive.current = false;
-
-        // Clear long press timer
-        if (longPressTimer.current) {
-          clearTimeout(longPressTimer.current);
-          longPressTimer.current = null;
-        }
-
         pan.flattenOffset();
         setIsActive(false);
         lastDistance.current = 0;
@@ -210,11 +177,6 @@ const DraggableItem = ({
       },
       onPanResponderTerminate: () => {
         // Touch was interrupted - clean up
-        isTouchActive.current = false;
-        if (longPressTimer.current) {
-          clearTimeout(longPressTimer.current);
-          longPressTimer.current = null;
-        }
         pan.flattenOffset();
         setIsActive(false);
         setIsOverTrash(false);
@@ -235,7 +197,6 @@ const DraggableItem = ({
             { scale: scaleAnim },
           ],
           zIndex: isActive ? 1000 : canvasItem.zIndex,
-          opacity: isInDeleteMode ? 0.5 : 1,
         },
         (isActive || isSelected) && styles.canvasItemSelected,
         isOverTrash && styles.canvasItemOverTrash,
@@ -261,7 +222,6 @@ export default function OutfitScreen() {
   const [isDragging, setIsDragging] = useState(false);
   const [canvasHeight, setCanvasHeight] = useState(400);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
-  const [deleteItemId, setDeleteItemId] = useState<string | null>(null);
   const nextZIndex = useRef(1);
 
   // Modal state
@@ -336,25 +296,10 @@ export default function OutfitScreen() {
   const handleDelete = (id: string) => {
     setCanvasItems(prev => prev.filter(item => item.id !== id));
     setSelectedItemId(null);
-    setDeleteItemId(null);
   };
 
   const handleTap = (id: string) => {
-    if (deleteItemId) {
-      setDeleteItemId(null);
-    }
     setSelectedItemId(prev => (prev === id ? null : id));
-  };
-
-  const handleLongPress = (id: string) => {
-    setSelectedItemId(null);
-    setDeleteItemId(id);
-  };
-
-  const confirmDelete = () => {
-    if (deleteItemId) {
-      handleDelete(deleteItemId);
-    }
   };
 
   const moveLayerUp = () => {
@@ -466,19 +411,13 @@ export default function OutfitScreen() {
                     onDragStateChange={handleDragStateChange}
                     onDelete={handleDelete}
                     onTap={handleTap}
-                    onLongPress={handleLongPress}
                     isSelected={selectedItemId === canvasItem.id}
-                    isInDeleteMode={deleteItemId === canvasItem.id}
                     canvasHeight={canvasHeight}
                   />
                 ))}
 
                 {/* Controls inside canvas at bottom */}
-                {deleteItemId ? (
-                  <TouchableOpacity style={styles.canvasInnerDelete} onPress={confirmDelete}>
-                    <Trash2 size={24} color="#fff" />
-                  </TouchableOpacity>
-                ) : selectedItemId ? (
+                {selectedItemId && (
                   <View style={styles.canvasInnerControls}>
                     <TouchableOpacity style={styles.layerButton} onPress={moveLayerDown}>
                       <ChevronDown size={24} color="#333" />
@@ -487,7 +426,7 @@ export default function OutfitScreen() {
                       <ChevronUp size={24} color="#333" />
                     </TouchableOpacity>
                   </View>
-                ) : null}
+                )}
               </>
             )}
 
@@ -807,20 +746,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 12,
     zIndex: 999,
-  },
-  canvasInnerDelete: {
-    position: 'absolute',
-    bottom: 16,
-    alignSelf: 'center',
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#ff3b30',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 999,
-    left: '50%',
-    marginLeft: -28,
   },
   layerButton: {
     width: 48,
