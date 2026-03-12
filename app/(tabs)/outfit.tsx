@@ -20,7 +20,6 @@ import { ClothingItem } from '@/types';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const ITEM_SIZE = 100;
-const TRASH_ZONE_SIZE = 70;
 
 // Custom Pants icon
 const Pants = ({ size = 24, color = '#000' }: { size?: number; color?: string }) => (
@@ -273,13 +272,6 @@ export default function OutfitScreen() {
   const addLayer = () => {
     if (topLayers.length < 4) {
       setTopLayers([...topLayers, null]);
-    }
-  };
-
-  const removeLayer = (index: number) => {
-    if (topLayers.length > 1) {
-      const newLayers = topLayers.filter((_, i) => i !== index);
-      setTopLayers(newLayers);
     }
   };
 
