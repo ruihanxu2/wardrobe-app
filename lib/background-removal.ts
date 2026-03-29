@@ -79,6 +79,8 @@ export async function removeBackground(imageUri: string): Promise<BackgroundRemo
     };
   }
 
+  const startTime = Date.now();
+
   try {
     // Normalize the URI - ensure it has file:// prefix for local files
     let normalizedUri = imageUri;
@@ -86,10 +88,14 @@ export async function removeBackground(imageUri: string): Promise<BackgroundRemo
       normalizedUri = `file://${imageUri}`;
     }
 
-    console.log('Calling Photoroom API with URI:', normalizedUri);
+    console.log('[Photoroom] Starting background removal...');
+    const uploadStart = Date.now();
 
     // Use XMLHttpRequest for more reliable file upload
     const responseBuffer = await uploadWithXHR(PHOTOROOM_API_URL, apiKey, normalizedUri);
+
+    const uploadTime = Date.now() - uploadStart;
+    console.log(`[Photoroom] API response received in ${uploadTime}ms`);
 
     // Convert response to base64
     const base64Result = arrayBufferToBase64(responseBuffer);
@@ -99,12 +105,17 @@ export async function removeBackground(imageUri: string): Promise<BackgroundRemo
     outputFile.create();
     outputFile.write(base64Result, { encoding: 'base64' });
 
+    const totalTime = Date.now() - startTime;
+    console.log(`[Photoroom] ✅ Background removal complete in ${totalTime}ms`);
+    console.log(`[Photoroom] Output saved to: ${outputFile.uri}`);
+
     return {
       success: true,
       extractedUri: outputFile.uri,
     };
   } catch (error: any) {
-    console.error('Background removal error:', error);
+    const totalTime = Date.now() - startTime;
+    console.error(`[Photoroom] ❌ Failed after ${totalTime}ms:`, error);
 
     let errorMessage = error?.message || 'Failed to remove background';
 
