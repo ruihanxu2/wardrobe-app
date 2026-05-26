@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 
 const PHOTOROOM_API_URL = 'https://sdk.photoroom.com/v1/segment';
 
