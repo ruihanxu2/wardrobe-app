@@ -103,7 +103,7 @@ export async function removeBackground(imageUri: string): Promise<BackgroundRemo
     // Save the PNG to a temporary file
     const outputUri = `${FileSystem.cacheDirectory}extracted_${Date.now()}.png`;
     await FileSystem.writeAsStringAsync(outputUri, base64Result, {
-      encoding: FileSystem.EncodingType.Base64,
+      encoding: 'base64',
     });
 
     const totalTime = Date.now() - startTime;
