@@ -1,4 +1,4 @@
-import { File, Paths } from 'expo-file-system';
+import * as FileSystem from 'expo-file-system';
 
 const PHOTOROOM_API_URL = 'https://sdk.photoroom.com/v1/segment';
 
@@ -101,17 +101,18 @@ export async function removeBackground(imageUri: string): Promise<BackgroundRemo
     const base64Result = arrayBufferToBase64(responseBuffer);
 
     // Save the PNG to a temporary file
-    const outputFile = new File(Paths.cache, `extracted_${Date.now()}.png`);
-    outputFile.create();
-    outputFile.write(base64Result, { encoding: 'base64' });
+    const outputUri = `${FileSystem.cacheDirectory}extracted_${Date.now()}.png`;
+    await FileSystem.writeAsStringAsync(outputUri, base64Result, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
 
     const totalTime = Date.now() - startTime;
     console.log(`[Photoroom] ✅ Background removal complete in ${totalTime}ms`);
-    console.log(`[Photoroom] Output saved to: ${outputFile.uri}`);
+    console.log(`[Photoroom] Output saved to: ${outputUri}`);
 
     return {
       success: true,
-      extractedUri: outputFile.uri,
+      extractedUri: outputUri,
     };
   } catch (error: any) {
     const totalTime = Date.now() - startTime;
